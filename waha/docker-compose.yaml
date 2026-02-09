@@ -1,0 +1,29 @@
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: waha
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./sessions:/app/.sessions
+    environment:
+      # --- AUTH & SECURITY ---
+      - WHATSAPP_API_KEY=Saputra2025!  # Ganti dengan key rahasia Anda
+      - WAHA_DASHBOARD_ENABLED=true
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD=Saputra2025!       # Gunakan password yang kuat
+      
+      # --- CONFIGURATION ---
+      - TZ=Asia/Jakarta
+      - WAHA_ZIP_SESSIONS=true                           # Menghemat ruang disk
+      - WHATSAPP_API_HOSTNAME=waha-sgi.revelation.web.id
+      
+      # --- SWAGGER / DOCUMENTATION ---
+      - WAHA_SWAGGER_ENABLED=true                        # Agar bisa coba API di browser
+    
+    # Membatasi RAM agar VPS 1GB Anda tidak mati total (OOM Kill)
+    deploy:
+      resources:
+        limits:
+          memory: 700M

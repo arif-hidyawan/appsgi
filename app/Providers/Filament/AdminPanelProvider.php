@@ -18,8 +18,13 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\Support\Enums\MaxWidth;
-
 use Filapanel\ClassicTheme\ClassicThemePlugin;
+use Illuminate\Support\Facades\Blade; 
+use Filament\View\PanelsRenderHook;
+
+
+// Pastikan nama class sesuai dengan file yang ada
+//use App\Filament\Widgets\CustomDashboardChart; 
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -30,20 +35,39 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            
+            // --- UPDATE LOGO DI SINI ---
+            ->brandLogo(asset('images/logo-white.png')) // Pastikan file ada di public/images/logo.png
+            ->brandLogoHeight('2rem') // Sesuaikan tinggi logo (misal: 3rem atau 40px)
+            ->favicon(asset('images/favicon.png'))
+            // ---------------------------
+
             ->maxContentWidth(MaxWidth::Full)
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => '#025DAA',
             ])
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): string => Blade::render('@include("filament.admin-custom-style")')
+            )
+            ->renderHook(
+                PanelsRenderHook::FOOTER,
+                fn (): string => Blade::render('
+                    <footer class="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                        Copyright &copy; {{ date("Y") }} <strong>Saputra Group Indonesia</strong>. All Rights Reserved. <br>
+                        Development by <strong>PT Akselerasi Teknologi Integrasi</strong>.
+                    </footer>
+                ')
+            )
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
                 Pages\Dashboard::class,
             ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
-            ->widgets([
-                Widgets\AccountWidget::class,
-                Widgets\FilamentInfoWidget::class,
-            ])
+            //->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            //->widgets([
+                //CustomDashboardChart::class,
+            //])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
@@ -58,6 +82,9 @@ class AdminPanelProvider extends PanelProvider
             ->plugin(ClassicThemePlugin::make())
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            
+            ])
+            ->databaseNotifications()
+        ->databaseNotificationsPolling('30s');
     }
 }

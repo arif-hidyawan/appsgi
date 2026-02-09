@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Spatie\Backup\Tasks\Backup\BackupJob;
 
 class AppServiceProvider extends ServiceProvider
 {

@@ -3,14 +3,20 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Spatie\Permission\Traits\HasRoles;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-class User extends Authenticatable
+
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
+    use HasRoles;
 
     /**
      * The attributes that are mass assignable.
@@ -21,6 +27,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'no_wa',   // <--- TAMBAHKAN INI
+        'wa_lid',  // <--- TAMBAHKAN INI
     ];
 
     /**
@@ -45,4 +53,18 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    // Relasi ke Perusahaan
+    public function companies(): BelongsToMany
+    {
+        return $this->belongsToMany(Company::class, 'company_user');
+    }
+
+    // Logic Akses Panel Admin
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return true; 
+    }
+
+    
 }
