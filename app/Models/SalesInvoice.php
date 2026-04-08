@@ -14,6 +14,7 @@ class SalesInvoice extends Model
     protected $casts = [
         'date' => 'date',
         'due_date' => 'date',
+        'is_dp' => 'boolean',
     ];
 
     /**

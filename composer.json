@@ -9,7 +9,6 @@
         "php": "^8.2",
         "barryvdh/laravel-dompdf": "^3.1",
         "filament/filament": "^3.0",
-        "filapanel/classic-theme": "^1.0",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
         "maatwebsite/excel": "^3.1",

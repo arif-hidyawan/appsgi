@@ -28,7 +28,7 @@ class BukuBesar extends Page implements HasForms
     protected static string $view = 'filament.pages.buku-besar';
 
     // State
-    public ?int $company_id = null; // Tambahkan properti ini
+    public ?int $company_id = null; 
     public ?string $start_date = null;
     public ?string $end_date = null;
     public ?int $account_id = null;
@@ -92,7 +92,7 @@ class BukuBesar extends Page implements HasForms
                             ->afterStateUpdated(fn (Set $set) => $set('account_id', null)) // Reset akun jika ganti PT
                             ->required(),
 
-                        // 2. FILTER AKUN (Tergantung Perusahaan)
+                        // 2. FILTER AKUN DENGAN TREE VIEW (OPTGROUP)
                         Forms\Components\Select::make('account_id')
                             ->label('Pilih Akun')
                             ->options(function (Get $get) {
@@ -101,11 +101,24 @@ class BukuBesar extends Page implements HasForms
                                 
                                 if (!$companyId) return []; // Kosong jika belum pilih PT
 
-                                return Account::where('company_id', $companyId)
+                                // Ambil semua akun detail beserta induknya
+                                $accounts = Account::query()
+                                    ->where('company_id', $companyId)
                                     ->where('type', 'D')
+                                    ->with('parent') // Load relasi parent agar tidak N+1 query
                                     ->orderBy('code')
-                                    ->get()
-                                    ->mapWithKeys(fn ($account) => [$account->id => "$account->code - $account->name"]);
+                                    ->get();
+
+                                $options = [];
+                                foreach ($accounts as $account) {
+                                    // Tentukan nama Grup (Induk)
+                                    $groupName = $account->parent ? "{$account->parent->code} - {$account->parent->name}" : 'Tanpa Induk';
+                                    
+                                    // Masukkan akun ke dalam array grup tersebut
+                                    $options[$groupName][$account->id] = "{$account->code} - {$account->name}";
+                                }
+
+                                return $options;
                             })
                             ->searchable()
                             ->preload()

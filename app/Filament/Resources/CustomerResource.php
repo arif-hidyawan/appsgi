@@ -46,36 +46,73 @@ class CustomerResource extends Resource
                                     ->required()
                                     ->columnSpanFull()
                                     ->maxLength(255),
-
-                                // --- HUT PERUSAHAAN ---
-                                Forms\Components\DatePicker::make('anniversary_date')
-                                    ->label('HUT Perusahaan')
-                                    ->displayFormat('d F Y') 
-                                    ->native(false) 
-                                    ->columnSpanFull(),
-                                // ----------------------
+                                    
+                                Forms\Components\Select::make('business_type')
+                                    ->label('Jenis Usaha')
+                                    ->options([
+                                        'Perdagangan' => 'Perdagangan',
+                                        'Industri' => 'Industri',
+                                        'Pemerintahan' => 'Pemerintahan',
+                                        'Pendidikan' => 'Pendidikan',
+                                        'Rumah Sakit' => 'Rumah Sakit',
+                                        'BUMN' => 'BUMN',
+                                        'Pribadi' => 'Pribadi',
+                                    ])
+                                    ->searchable(),
 
                                 Forms\Components\TextInput::make('tax_id')
                                     ->label('NPWP / Tax ID')
                                     ->maxLength(50),
 
-                               
+                                Forms\Components\DatePicker::make('anniversary_date')
+                                    ->label('HUT Perusahaan')
+                                    ->displayFormat('d F Y') 
+                                    ->native(false),
+
+                                Forms\Components\Select::make('business_scope')
+                                    ->label('Lingkup Usaha')
+                                    ->options([
+                                        'Sub Con' => 'Sub Con',
+                                        'End User' => 'End User',
+                                    ]),
                                 
                                 Forms\Components\Toggle::make('is_active')
                                     ->label('Status Aktif')
                                     ->default(true)
-                                    ->inline(false),
+                                    ->inline(false)
+                                    ->columnSpanFull(),
                             ])->columns(2),
 
                         Forms\Components\Section::make('Alamat')
                             ->schema([
                                 Forms\Components\Textarea::make('billing_address')
                                     ->label('Alamat Tagihan (Kantor)')
-                                    ->rows(2),
+                                    ->rows(2)
+                                    ->columnSpanFull(),
+                                
+                                Forms\Components\Group::make()
+                                    ->schema([
+                                        Forms\Components\TextInput::make('district')->label('Kecamatan'),
+                                        Forms\Components\TextInput::make('city')->label('Kota/Kabupaten'),
+                                        Forms\Components\TextInput::make('province')->label('Provinsi'),
+                                    ])->columns(3)->columnSpanFull(),
                                 
                                 Forms\Components\Textarea::make('shipping_address')
                                     ->label('Alamat Pengiriman (Gudang)')
-                                    ->rows(2),
+                                    ->rows(2)
+                                    ->columnSpanFull(),
+                            ]),
+                            
+                        // --- DOKUMEN PENDUKUNG ---
+                        Forms\Components\Section::make('Dokumen Pendukung')
+                            ->schema([
+                                Forms\Components\FileUpload::make('supporting_documents')
+                                    ->label('File Upload (KTP/NPWP/NIB dll)')
+                                    ->multiple()
+                                    ->directory('customer_documents')
+                                    ->openable()
+                                    ->downloadable()
+                                    ->columnSpanFull(),
                             ]),
                     ])->columnSpan(2),
 
@@ -99,9 +136,16 @@ class CustomerResource extends Resource
 
                         Forms\Components\Section::make('Ketentuan Bisnis')
                             ->schema([
-                                Forms\Components\TextInput::make('payment_terms')
+                                Forms\Components\Select::make('payment_terms')
                                     ->label('Termin Pembayaran')
-                                    ->placeholder('Contoh: Net 30 Days'),
+                                    ->options([
+                                        'DP/Cash Before Delivery (CBD)' => 'DP/Cash Before Delivery (CBD)',
+                                        'Cash On Delivery (COD)' => 'Cash On Delivery (COD)',
+                                        '7 Hari' => '7 Hari',
+                                        '14 Hari' => '14 Hari',
+                                        '30 Hari' => '30 Hari',
+                                    ])
+                                    ->searchable(),
                                 
                                 Forms\Components\TextInput::make('credit_limit')
                                     ->label('Limit Kredit (Rp)')
@@ -129,13 +173,21 @@ class CustomerResource extends Resource
                     ->weight('bold')
                     ->description(fn (Customer $record) => $record->tax_id ? 'NPWP: ' . $record->tax_id : null),
 
-                // --- INFO HUT DI TABEL ---
+                Tables\Columns\TextColumn::make('business_type')
+                    ->label('Jenis Usaha')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('city')
+                    ->label('Kota')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: false),
+
                 Tables\Columns\TextColumn::make('anniversary_date')
                     ->label('HUT')
                     ->date('d M') 
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true), 
-                // -------------------------
 
                 Tables\Columns\TextColumn::make('phone')
                     ->label('Telp')
@@ -158,6 +210,17 @@ class CustomerResource extends Resource
             ->filters([
                 Tables\Filters\TernaryFilter::make('is_active')
                     ->label('Status Aktif'),
+                Tables\Filters\SelectFilter::make('business_type')
+                    ->label('Jenis Usaha')
+                    ->options([
+                        'Perdagangan' => 'Perdagangan',
+                        'Industri' => 'Industri',
+                        'Pemerintahan' => 'Pemerintahan',
+                        'Pendidikan' => 'Pendidikan',
+                        'Rumah Sakit' => 'Rumah Sakit',
+                        'BUMN' => 'BUMN',
+                        'Pribadi' => 'Pribadi',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),

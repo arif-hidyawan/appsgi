@@ -18,7 +18,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\Support\Enums\MaxWidth;
-use Filapanel\ClassicTheme\ClassicThemePlugin;
+//use Filapanel\ClassicTheme\ClassicThemePlugin;
 use Illuminate\Support\Facades\Blade; 
 use Filament\View\PanelsRenderHook;
 
@@ -37,9 +37,13 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             
             // --- UPDATE LOGO DI SINI ---
-            ->brandLogo(asset('images/logo-white.png')) // Pastikan file ada di public/images/logo.png
+            ->brandLogo(asset('images/logo.png')) // Pastikan file ada di public/images/logo.png
             ->brandLogoHeight('2rem') // Sesuaikan tinggi logo (misal: 3rem atau 40px)
             ->favicon(asset('images/favicon.png'))
+            // ---------------------------
+
+            // --- TOMBOL HIDE SIDEBAR ---
+            ->sidebarCollapsibleOnDesktop()
             // ---------------------------
 
             ->maxContentWidth(MaxWidth::Full)
@@ -79,12 +83,12 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
-            ->plugin(ClassicThemePlugin::make())
+            //->plugin(ClassicThemePlugin::make())
             ->authMiddleware([
                 Authenticate::class,
             
             ])
             ->databaseNotifications()
-        ->databaseNotificationsPolling('30s');
+            ->databaseNotificationsPolling('30s');
     }
 }

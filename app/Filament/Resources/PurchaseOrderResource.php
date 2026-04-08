@@ -80,7 +80,7 @@ class PurchaseOrderResource extends Resource
 
                                 Forms\Components\Select::make('pic_id')
                                     ->label('PIC Procurement / Purchasing')
-                                    ->relationship('pic', 'name') // Menggunakan relasi 'pic' yang dibuat di model
+                                    ->relationship('pic', 'name')
                                     ->searchable()
                                     ->preload()
                                     ->required()
@@ -217,17 +217,23 @@ class PurchaseOrderResource extends Resource
                     ->openUrlInNewTab()
                     ->placeholder('-'),
 
-                    Tables\Columns\TextColumn::make('items.product.name')
+                    Tables\Columns\TextColumn::make('items.custom_name')
                     ->label('Item Produk')
                     ->listWithLineBreaks()
                     ->limitList(2)
                     ->expandableLimitedList()
                     ->badge()
                     ->color('gray')
-                    // Logic pencarian khusus relasi HasMany (PurchaseOrder -> Items -> Product)
+                    ->formatStateUsing(function (string $state, $record) {
+                        // Jika ada custom name yang kosong di database, fallback ke product->name
+                        return !empty($state) ? $state : ($record->items->firstWhere('custom_name', null)?->product?->name ?? '-');
+                    })
                     ->searchable(query: function ($query, $search) {
-                        return $query->whereHas('items.product', function ($q) use ($search) {
-                            $q->where('name', 'like', "%{$search}%");
+                        return $query->whereHas('items', function ($q) use ($search) {
+                            $q->where('custom_name', 'like', "%{$search}%")
+                              ->orWhereHas('product', function ($q2) use ($search) {
+                                  $q2->where('name', 'like', "%{$search}%");
+                              });
                         });
                     })
                     ->toggleable(),
@@ -338,10 +344,10 @@ class PurchaseOrderResource extends Resource
                                    ->default($item['product_id']),
                                
                                Forms\Components\Grid::make(12)->schema([
-                                   // NAMA PRODUK
+                                   // NAMA PRODUK - SEKARANG MENGGUNAKAN NAMA VENDOR (CUSTOM NAME)
                                    Forms\Components\TextInput::make("items.{$item['product_id']}.product_name")
                                        ->label('Produk')
-                                       ->default($item['product_name'])
+                                       ->default($item['product_name']) // Ini sudah dikirim custom_name dari model
                                        ->disabled()
                                        ->dehydrated(false)
                                        ->columnSpan(4),
@@ -364,7 +370,6 @@ class PurchaseOrderResource extends Resource
                                        ->numeric()
                                        ->default($item['qty_remaining']) 
                                        ->minValue(0)
-                                       // ->maxValue(...)  <-- HAPUS INI AGAR BISA LEBIH
                                        ->required()
                                        ->columnSpan(2)
                                        ->reactive()
@@ -466,11 +471,9 @@ class PurchaseOrderResource extends Resource
                                $qtyOverDelivery = 0;
 
                                if ($inputReceived > $qtyRemainingPO) {
-                                   // Jika input lebih besar dari sisa PO
-                                   $qtyToStock = $qtyRemainingPO; // Masuk stok cuma sampai mentok PO
-                                   $qtyOverDelivery = $inputReceived - $qtyRemainingPO; // Sisanya Retur
+                                   $qtyToStock = $qtyRemainingPO; 
+                                   $qtyOverDelivery = $inputReceived - $qtyRemainingPO; 
                                } else {
-                                   // Jika normal / kurang
                                    $qtyToStock = $inputReceived;
                                    $qtyOverDelivery = 0;
                                }

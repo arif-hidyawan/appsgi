@@ -12,6 +12,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rules\Unique;
 use Illuminate\Support\HtmlString;
+use Filament\Facades\Filament;
 
 class AccountResource extends Resource
 {
@@ -21,8 +22,8 @@ class AccountResource extends Resource
     protected static ?string $navigationGroup = 'Accounting';
     protected static ?int $navigationSort = 15;
 
-    // Supaya otomatis ter-scope ke Tenant/Perusahaan aktif
-    protected static bool $isScopedToTenant = true; 
+    // Matikan strict scoping jika ingin bebas sebagai Super Admin
+    protected static bool $isScopedToTenant = false; 
 
     public static function form(Form $form): Form
     {
@@ -31,15 +32,23 @@ class AccountResource extends Resource
                 Forms\Components\Section::make('Informasi Akun')
                     ->columns(2)
                     ->schema([
+                        Forms\Components\Select::make('company_id')
+                            ->label('Perusahaan')
+                            ->relationship('company', 'name')
+                            ->default(fn () => Filament::getTenant()?->id)
+                            ->required()
+                            ->searchable()
+                            ->preload()
+                            ->live(), // Penting agar data lain bisa refresh jika perusahaan diganti
+                        
                         Forms\Components\TextInput::make('code')
                             ->label('Kode Akun')
                             ->required()
-                            // Update Validasi: Unik berdasarkan Company ID
                             ->unique(
                                 ignoreRecord: true, 
-                                modifyRuleUsing: function (Unique $rule) {
-                                    // Cek unik hanya di perusahaan yang sedang login
-                                    return $rule->where('company_id', filament()->getTenant()->id);
+                                modifyRuleUsing: function (Unique $rule, Forms\Get $get) {
+                                    // Unique dicek berdasarkan perusahaan yang dipilih di atas
+                                    return $rule->where('company_id', $get('company_id'));
                                 }
                             ),
                         
@@ -49,12 +58,19 @@ class AccountResource extends Resource
 
                         Forms\Components\Select::make('parent_id')
                             ->label('Induk Akun (Parent)')
-                            // Filter: Hanya tampilkan Header dari perusahaan yang sama
-                            ->relationship('parent', 'name', function (Builder $query) {
-                                return $query->where('type', 'H')
-                                             ->where('company_id', filament()->getTenant()->id);
-                            })
-                            ->searchable()
+                            ->relationship(
+                                name: 'parent', 
+                                titleAttribute: 'name',
+                                modifyQueryUsing: function (Builder $query, Forms\Get $get) {
+                                    // Bebaskan query: Super Admin bisa lihat semua Header
+                                    // Atau jika ingin sedikit rapi, filter berdasarkan PT yang dipilih saja
+                                    $companyId = $get('company_id');
+                                    return $query->where('type', 'H')
+                                        ->when($companyId, fn($q) => $q->where('company_id', $companyId));
+                                }
+                            )
+                            ->getOptionLabelFromRecordUsing(fn (Account $record) => "{$record->code} - {$record->name}")
+                            ->searchable(['code', 'name']) 
                             ->preload(),
 
                         Forms\Components\Select::make('type')
@@ -78,7 +94,7 @@ class AccountResource extends Resource
                                 'other_revenue' => 'Pendapatan Lain',
                                 'other_expense' => 'Biaya Lain',
                             ])
-                            ->required(),
+                            ->required(), // Pastikan ini tidak ter-hidden atau disabled
                     ]),
 
                 Forms\Components\Section::make('Konfigurasi')
@@ -96,81 +112,73 @@ class AccountResource extends Resource
     }
 
     public static function table(Table $table): Table
-{
-    return $table
-        ->columns([
-            // 1. KOLOM PERUSAHAAN (BARU)
-            Tables\Columns\TextColumn::make('company.name')
-                ->label('Perusahaan')
-                ->sortable()
-                ->searchable()
-                ->badge() // Biar tampilannya lebih cantik kayak label
-                ->color('gray'),
+    {
+        return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['parent', 'parent.parent', 'parent.parent.parent', 'parent.parent.parent.parent']))
+            ->columns([
+                Tables\Columns\TextColumn::make('company.name')
+                    ->label('Perusahaan')
+                    ->sortable()
+                    ->searchable()
+                    ->badge()
+                    ->color('gray'),
 
-            Tables\Columns\TextColumn::make('code')
-                ->label('Kode')
-                ->sortable()
-                ->searchable()
-                ->weight('bold'),
+                Tables\Columns\TextColumn::make('code')
+                    ->label('Kode')
+                    ->sortable()
+                    ->searchable()
+                    ->weight('bold'),
 
-            // Tree View Visual
-            Tables\Columns\TextColumn::make('name')
-                ->label('Nama Akun')
-                ->searchable()
-                ->formatStateUsing(function (Account $record) {
-                    $prefix = $record->parent_id ? '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↳ ' : '';
-                    $name = $record->type === 'H' ? "<strong>{$record->name}</strong>" : $record->name;
-                    return new HtmlString($prefix . $name);
-                })
-                ->html(),
+                Tables\Columns\TextColumn::make('name')
+                    ->label('Nama Akun')
+                    ->searchable()
+                    ->formatStateUsing(function (Account $record) {
+                        $depth = 0;
+                        $parent = $record->parent;
+                        while ($parent) {
+                            $depth++;
+                            $parent = $parent->parent;
+                        }
 
-            Tables\Columns\TextColumn::make('type')
-                ->badge()
-                ->colors([
-                    'warning' => 'H',
-                    'success' => 'D',
-                ]),
+                        $indent = str_repeat('&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;', $depth);
+                        $prefix = $depth > 0 ? $indent . '↳ ' : '';
+                        $name = $record->type === 'H' ? "<strong>{$record->name}</strong>" : $record->name;
+                        
+                        return new HtmlString($prefix . $name);
+                    })
+                    ->html(),
 
-            Tables\Columns\TextColumn::make('nature')
-                ->label('Nature')
-                ->badge(),
+                Tables\Columns\TextColumn::make('type')
+                    ->badge()
+                    ->colors([
+                        'warning' => 'H',
+                        'success' => 'D',
+                    ]),
 
-            Tables\Columns\IconColumn::make('is_active')
-                ->boolean(),
-        ])
-        ->defaultSort('code') // Default urut kode
-        
-        // 2. GROUPING (Opsional: Mengelompokkan baris per Perusahaan)
-        // ->groups([
-        //     Tables\Grouping\Group::make('company.name')
-        //         ->label('Perusahaan')
-        //         ->collapsible(),
-        // ])
-        
-        ->filters([
-            // 3. FILTER PERUSAHAAN (BARU)
-            Tables\Filters\SelectFilter::make('company_id')
-                ->label('Filter Perusahaan')
-                ->relationship('company', 'name') // Ambil list dari tabel companies
-                ->searchable()
-                ->preload(),
+                Tables\Columns\TextColumn::make('nature')
+                    ->label('Nature')
+                    ->badge(),
 
-            Tables\Filters\SelectFilter::make('type')
-                ->options([
-                    'H' => 'Header',
-                    'D' => 'Detail',
-                ]),
-                
-            Tables\Filters\SelectFilter::make('nature')
-                ->options([
-                    'asset' => 'Asset',
-                    'liability' => 'Liability',
-                    'equity' => 'Equity',
-                    'revenue' => 'Revenue',
-                    'expense' => 'Expense',
-                ]),
-        ]);
-}
+                Tables\Columns\IconColumn::make('is_active')
+                    ->boolean(),
+            ])
+            ->defaultSort('code')
+            ->filters([
+                Tables\Filters\SelectFilter::make('company_id')
+                    ->label('Perusahaan')
+                    ->relationship('company', 'name'),
+                Tables\Filters\SelectFilter::make('type')
+                    ->options(['H' => 'Header', 'D' => 'Detail']),
+                Tables\Filters\SelectFilter::make('nature')
+                    ->options([
+                        'asset' => 'Asset',
+                        'liability' => 'Liability',
+                        'equity' => 'Equity',
+                        'revenue' => 'Revenue',
+                        'expense' => 'Expense',
+                    ]),
+            ]);
+    }
 
     public static function getPages(): array
     {

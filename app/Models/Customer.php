@@ -13,7 +13,8 @@ class Customer extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'credit_limit' => 'decimal:2',
-        'anniversary_date' => 'date', // 2. Wajib ada agar DatePicker Filament berfungsi
+        'anniversary_date' => 'date', 
+        'supporting_documents' => 'array',
     ];
 
     // Relasi ke Master Pajak (Default Tax)

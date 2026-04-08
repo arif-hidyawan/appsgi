@@ -5,6 +5,8 @@ use App\Http\Controllers\PdfController;
 use App\Http\Controllers\DeliveryOrderController;
 use App\Models\SalesPayment;
 
+use App\Http\Controllers\CustomerRegistrationController;
+
 Route::get('/', fn () => redirect()->away('https://app.saputragroupindo.com/admin'));
 
 
@@ -32,3 +34,6 @@ Route::get('/print/payment/{record}', function (SalesPayment $record) {
         return view('pdf.payment', ['record' => $record]);
         
     })->name('print.payment')->middleware('auth');
+
+Route::get('/register-customer', [CustomerRegistrationController::class, 'create'])->name('customer.register.form');
+Route::post('/register-customer', [CustomerRegistrationController::class, 'store'])->name('customer.register.submit');

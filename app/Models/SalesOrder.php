@@ -83,4 +83,12 @@ public function quotations()
 {
     return $this->belongsTo(\App\Models\Tax::class, 'tax_id');
 }
+
+public function invoices()
+    {
+        // Cari Invoice yang memiliki item dengan sales_order_id milik SO ini
+        return SalesInvoice::whereHas('items', function ($query) {
+            $query->where('sales_order_id', $this->id);
+        })->get();
+    }
 }

@@ -16,10 +16,13 @@ use App\Filament\Concerns\HasPermissionPrefix;
 class GoodsReceiveResource extends Resource
 {
     protected static ?string $model = GoodsReceive::class;
-    protected static ?string $navigationIcon = 'heroicon-o-archive-box-arrow-down';
+    // Menggunakan saran ikon dokumen arsip sebelumnya
+    protected static ?string $navigationIcon = 'heroicon-o-document-check'; 
     protected static ?string $navigationGroup = 'Inventory'; 
-    protected static ?string $modelLabel = 'Penerimaan Barang';
-    protected static ?int $navigationSort = 7;
+    protected static ?string $navigationLabel = 'Bukti Terima (GR)';
+    protected static ?string $modelLabel = 'Bukti Terima Barang';
+    protected static ?string $pluralModelLabel = 'Data Bukti Terima';
+    protected static ?int $navigationSort = 8;
 
     use HasPermissionPrefix;
     protected static ?string $permissionPrefix = 'goods_receive';
@@ -50,11 +53,11 @@ class GoodsReceiveResource extends Resource
                                     ->default(now())
                                     ->required(),
 
-                                    Forms\Components\Select::make('warehouse_id')
-    ->label('Gudang Penerimaan')
-    ->relationship('warehouse', 'name') // Pastikan relasi di model GoodsReceive ada
-    ->required()
-    ->default(fn() => \App\Models\Warehouse::first()->id ?? null), // Default warehouse
+                                Forms\Components\Select::make('warehouse_id')
+                                    ->label('Gudang Penerimaan')
+                                    ->relationship('warehouse', 'name') 
+                                    ->required()
+                                    ->default(fn() => \App\Models\Warehouse::first()->id ?? null), 
 
                                 // --- FLAG PERUSAHAAN (BARU) ---
                                 Forms\Components\Select::make('company_id')
@@ -79,9 +82,8 @@ class GoodsReceiveResource extends Resource
                                     ->disabled()
                                     ->required(),
 
-                                    Forms\Components\Select::make('vendor_contact_id')
+                                Forms\Components\Select::make('vendor_contact_id')
                                     ->label('PIC Vendor')
-                                    // --- PERBAIKAN DI SINI: Gunakan 'vendorContact' ---
                                     ->relationship('vendorContact', 'pic_name') 
                                     ->disabledOn('edit')
                                     ->placeholder('PIC sesuai PO'),
@@ -145,15 +147,15 @@ class GoodsReceiveResource extends Resource
                     ->label('Vendor')
                     ->searchable(),
 
-                    Tables\Columns\TextColumn::make('vendorContact.pic_name') // Ubah 'contact.pic_name' jadi 'vendorContact.pic_name'
+                Tables\Columns\TextColumn::make('vendorContact.pic_name') 
                     ->label('PIC Vendor')
                     ->icon('heroicon-m-user-circle')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->formatStateUsing(fn ($state, GoodsReceive $record) => 
-                        // Ubah $record->contact jadi $record->vendorContact
                         $state . ($record->vendorContact?->phone ? ' - ' . $record->vendorContact->phone : '')
                     ),
+                
                 Tables\Columns\TextColumn::make('purchaseOrder.po_number')
                     ->label('Ref PO')
                     ->icon('heroicon-m-arrow-top-right-on-square')
@@ -168,17 +170,46 @@ class GoodsReceiveResource extends Resource
                     ->openUrlInNewTab()
                     ->placeholder('-'),
 
-                    Tables\Columns\TextColumn::make('items.product.name')
+                // --- PERUBAHAN: MENAMPILKAN CUSTOM NAME DARI PO ---
+                Tables\Columns\TextColumn::make('items.product.name') // Label key dipertahankan agar relasi Filament tidak error
                     ->label('Item Produk')
+                    ->formatStateUsing(function ($state, $record) {
+                        $items = $record->items;
+                        if ($items->isEmpty()) return '-';
+
+                        // Tarik seluruh baris item PO yang terkait dengan GR ini untuk efisiensi query
+                        $poItems = \App\Models\PurchaseOrderItem::where('purchase_order_id', $record->purchase_order_id)->get();
+
+                        return $items->map(function ($item) use ($poItems) {
+                            // Cari item PO yang product_id-nya sama dengan item GR ini
+                            $matchingPoItem = $poItems->firstWhere('product_id', $item->product_id);
+                            
+                            // Gunakan custom_name dari PO jika ada, kalau tidak, fallback ke nama product master
+                            $displayName = ($matchingPoItem && $matchingPoItem->custom_name) 
+                                ? $matchingPoItem->custom_name 
+                                : ($item->product->name ?? '-');
+
+                            // Opsional: Tampilkan Qty diterima agar lebih informatif
+                            return "{$displayName} ({$item->qty_received} unit)";
+                        })->implode('<br>');
+                    })
+                    ->html()
                     ->listWithLineBreaks()
                     ->limitList(2)
                     ->expandableLimitedList()
                     ->badge()
                     ->color('gray')
-                    // Logic pencarian khusus relasi HasMany (GoodsReceive -> Items -> Product)
+                    // Logic pencarian harus dirajut agar bisa tembus mencari custom_name di tabel PO Items
                     ->searchable(query: function ($query, $search) {
-                        return $query->whereHas('items.product', function ($q) use ($search) {
-                            $q->where('name', 'like', "%{$search}%");
+                        return $query->whereHas('items', function ($q) use ($search) {
+                            // 1. Cari di nama produk master
+                            $q->whereHas('product', function ($q2) use ($search) {
+                                $q2->where('name', 'like', "%{$search}%");
+                            })
+                            // 2. ATAU cari custom_name via relasi purchaseOrder -> items
+                            ->orWhereHas('goodsReceive.purchaseOrder.items', function ($q3) use ($search) {
+                                $q3->where('custom_name', 'like', "%{$search}%");
+                            });
                         });
                     })
                     ->toggleable(),
@@ -209,7 +240,7 @@ class GoodsReceiveResource extends Resource
                     ->searchable()
                     ->preload(),
 
-                // 2. Filter Vendor (BARU)
+                // 2. Filter Vendor
                 Tables\Filters\SelectFilter::make('vendor_id')
                     ->label('Vendor')
                     ->relationship('vendor', 'name')
@@ -237,7 +268,6 @@ class GoodsReceiveResource extends Resource
                         ->modalSubmitAction(false) 
                         ->modalCancelActionLabel('Tutup')
                         ->modalContent(function (GoodsReceive $record) {
-                            // Menampilkan alur dari PO terkait
                             return view('filament.components.po-traceability', ['record' => $record->purchaseOrder]);
                         }),
 

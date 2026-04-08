@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\JournalResource\RelationManagers; // <--- WAJIB ADA JournalResource
 
+use App\Models\Account;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -21,14 +22,34 @@ class LinesRelationManager extends RelationManager
             ->schema([
                 Forms\Components\Select::make('account_id')
                     ->label('Akun')
-                    ->relationship('account', 'name', function (Builder $query) {
-                         // Ambil ID Perusahaan dari Jurnal induk
-                         $companyId = $this->getOwnerRecord()->company_id;
-                         return $query->where('type', 'D')->where('company_id', $companyId);
+                    // Menggunakan options() array multi-dimensi untuk membuat Tree / OptGroup otomatis
+                    ->options(function () {
+                        // Ambil ID Perusahaan dari Jurnal induk
+                        $companyId = $this->getOwnerRecord()->company_id;
+                        
+                        // Ambil semua akun bertipe Detail beserta relasi parent-nya
+                        $accounts = Account::query()
+                            ->where('type', 'D')
+                            ->where('company_id', $companyId)
+                            ->with('parent') 
+                            ->orderBy('code')
+                            ->get();
+                            
+                        $options = [];
+                        foreach ($accounts as $account) {
+                            // Tentukan Nama Induk (Grup)
+                            $groupName = $account->parent ? "{$account->parent->code} - {$account->parent->name}" : 'Tanpa Induk';
+                            
+                            // Masukkan akun ke dalam grup tersebut (Format: Kode - Nama)
+                            $options[$groupName][$account->id] = "{$account->code} - {$account->name}";
+                        }
+                        
+                        return $options;
                     })
                     ->searchable()
                     ->preload()
-                    ->required(),
+                    ->required()
+                    ->columnSpan(4), // Lebar kolom form disesuaikan
 
                 Forms\Components\Select::make('direction')
                     ->label('D/K')
@@ -36,17 +57,23 @@ class LinesRelationManager extends RelationManager
                         'debit' => 'Debit',
                         'credit' => 'Kredit',
                     ])
-                    ->required(),
+                    ->default('debit') // Default ke debit biar cepat
+                    ->required()
+                    ->columnSpan(2),
 
                 Forms\Components\TextInput::make('amount')
                     ->label('Nominal')
                     ->numeric()
-                    ->required(),
+                    ->default(0)
+                    ->required()
+                    ->columnSpan(3),
 
                 Forms\Components\TextInput::make('note')
                     ->label('Catatan')
-                    ->maxLength(255),
-            ]);
+                    ->maxLength(255)
+                    ->columnSpan(3),
+            ])
+            ->columns(12); // Grid 12 kolom agar inputannya sejajar rapi 1 baris
     }
 
     public function table(Table $table): Table
@@ -54,12 +81,31 @@ class LinesRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('note')
             ->columns([
-                Tables\Columns\TextColumn::make('account.code')->label('Kode'),
-                Tables\Columns\TextColumn::make('account.name')->label('Akun'),
-                Tables\Columns\TextColumn::make('direction')->label('Posisi')->badge()
-                    ->colors(['success' => 'debit', 'danger' => 'credit']),
-                Tables\Columns\TextColumn::make('amount')->label('Nominal')->money('IDR'),
-                Tables\Columns\TextColumn::make('note')->label('Catatan'),
+                Tables\Columns\TextColumn::make('account.code')
+                    ->label('Kode')
+                    ->sortable()
+                    ->searchable(),
+                    
+                Tables\Columns\TextColumn::make('account.name')
+                    ->label('Akun')
+                    ->sortable()
+                    ->searchable(),
+                    
+                Tables\Columns\TextColumn::make('direction')
+                    ->label('Posisi')
+                    ->badge()
+                    ->colors([
+                        'success' => 'debit',
+                        'danger' => 'credit'
+                    ]),
+                    
+                Tables\Columns\TextColumn::make('amount')
+                    ->label('Nominal')
+                    ->money('IDR')
+                    ->alignment('right'),
+                    
+                Tables\Columns\TextColumn::make('note')
+                    ->label('Catatan'),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make(),

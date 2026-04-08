@@ -224,9 +224,9 @@ class PurchaseInvoiceResource extends Resource
                             }
 
                             // 3. Buat Jurnal Akuntansi (Hutang vs Kas)
-                            // Cari Akun Hutang Usaha (AP) - Biasa Kode 2-1100
+                            // --- UPDATE KODE AKUN HUTANG USAHA SESUAI DATABASE ---
                             $apAccount = \App\Models\Account::where('company_id', $record->company_id)
-                                ->where('code', '2-1100') // Sesuaikan kode akun Hutang Usaha
+                                ->where('code', '2101.001') // Sudah disesuaikan dengan kode database 
                                 ->first();
 
                             if ($apAccount && $data['source_account_id']) {
@@ -253,6 +253,13 @@ class PurchaseInvoiceResource extends Resource
                                     'amount'     => $data['amount'],
                                     'note'       => 'Pengeluaran Kas/Bank',
                                 ]);
+                            } else {
+                                Notification::make()
+                                    ->title('Jurnal Gagal Dibuat')
+                                    ->body('Akun Hutang Usaha tidak ditemukan. Cek kode akun di sistem.')
+                                    ->warning()
+                                    ->send()
+                                    ->sendToDatabase(auth()->user());
                             }
 
                             Notification::make()->title('Pembayaran Vendor Berhasil Dicatat')->success()->send();

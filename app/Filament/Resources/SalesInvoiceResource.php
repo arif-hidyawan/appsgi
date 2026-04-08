@@ -124,7 +124,7 @@ class SalesInvoiceResource extends Resource
                     ->sortable()
                     ->weight('bold'),
                 
-                // --- UPDATE: TAMPILKAN COMPANY DI TABEL ---
+                // --- FLAG PERUSAHAAN DI TABEL ---
                 Tables\Columns\TextColumn::make('company.name')
                     ->label('Perusahaan')
                     ->badge()
@@ -132,10 +132,10 @@ class SalesInvoiceResource extends Resource
                     ->icon('heroicon-m-building-office')
                     ->sortable()
                     ->searchable()
-                    ->toggleable(), // Bisa di hide/show
-                // ------------------------------------------
+                    ->toggleable(isToggledHiddenByDefault: true), 
                 
                 Tables\Columns\TextColumn::make('date')
+                    ->label('Tanggal')
                     ->date('d M Y')
                     ->sortable(),
                 
@@ -149,6 +149,70 @@ class SalesInvoiceResource extends Resource
                     ->label('Customer')
                     ->searchable(),
 
+                // --- TAMBAHAN: REFERENSI SO ---
+                Tables\Columns\TextColumn::make('sales_order_id') 
+                    ->label('Ref SO')
+                    ->formatStateUsing(function (SalesInvoice $record) {
+                        // Tarik semua SO number dari item invoice, unik kan, lalu gabung
+                        $soNumbers = $record->items()
+                                            ->with('salesOrder')
+                                            ->get()
+                                            ->pluck('salesOrder.so_number')
+                                            ->filter()
+                                            ->unique();
+                        
+                        if ($soNumbers->isEmpty()) {
+                            // Fallback ke header jika item tidak punya SO ID
+                            return $record->salesOrder->so_number ?? '-';
+                        }
+                        
+                        return $soNumbers->implode('<br>');
+                    })
+                    ->html() // Agar <br> berfungsi jika lebih dari 1
+                    ->badge()
+                    ->color('gray')
+                    // Logic Search agar bisa dicari lewat No. SO
+                    ->searchable(query: function ($query, $search) {
+                        return $query->whereHas('items.salesOrder', function ($q) use ($search) {
+                            $q->where('so_number', 'like', "%{$search}%");
+                        })->orWhereHas('salesOrder', function ($q) use ($search) {
+                            $q->where('so_number', 'like', "%{$search}%");
+                        });
+                    })
+                    ->toggleable(),
+
+                // --- TAMBAHAN: REFERENSI PO CUSTOMER ---
+                Tables\Columns\TextColumn::make('po_customer') 
+                    ->label('PO Customer')
+                    ->formatStateUsing(function (SalesInvoice $record) {
+                        // Tarik semua PO Customer dari SO yang terkait dengan item
+                        $poNumbers = $record->items()
+                                            ->with('salesOrder')
+                                            ->get()
+                                            ->pluck('salesOrder.customer_po_number')
+                                            ->filter()
+                                            ->unique();
+
+                        if ($poNumbers->isEmpty()) {
+                            // Fallback ke header
+                            return $record->salesOrder->customer_po_number ?? '-';
+                        }
+                        
+                        return $poNumbers->implode('<br>');
+                    })
+                    ->html()
+                    ->icon('heroicon-m-document-text')
+                    ->color('info')
+                    // Logic Search agar bisa dicari lewat No. PO Customer
+                    ->searchable(query: function ($query, $search) {
+                        return $query->whereHas('items.salesOrder', function ($q) use ($search) {
+                            $q->where('customer_po_number', 'like', "%{$search}%");
+                        })->orWhereHas('salesOrder', function ($q) use ($search) {
+                            $q->where('customer_po_number', 'like', "%{$search}%");
+                        });
+                    })
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('subtotal_amount')
                     ->label('Subtotal')
                     ->money('IDR')
@@ -158,7 +222,8 @@ class SalesInvoiceResource extends Resource
                     ->label('PPN')
                     ->money('IDR')
                     ->color('danger') 
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 
                 Tables\Columns\TextColumn::make('grand_total')
                     ->label('Total Tagihan')
@@ -178,9 +243,9 @@ class SalesInvoiceResource extends Resource
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
                         'Unpaid' => 'Belum Lunas',
+                        'Partial' => 'Cicil / Sebagian',
                         'Paid' => 'Lunas',
                     ]),
-                // Filter berdasarkan Company juga bisa ditambahkan jika perlu
                 Tables\Filters\SelectFilter::make('company_id')
                     ->label('Perusahaan')
                     ->relationship('company', 'name'),
@@ -259,7 +324,8 @@ class SalesInvoiceResource extends Resource
                                 $record->update(['status' => 'Partial']);
                             }
 
-                            $arAccount = \App\Models\Account::where('company_id', $record->company_id)->where('code', '1-1210')->first(); 
+                            // --- UPDATE: KODE AKUN DISESUAIKAN DENGAN DATABASE ---
+                            $arAccount = \App\Models\Account::where('company_id', $record->company_id)->where('code', '1103.100')->first(); 
 
                             if ($arAccount && $data['deposit_to_account_id']) {
                                 $journal = \App\Models\Journal::create([
@@ -298,6 +364,7 @@ class SalesInvoiceResource extends Resource
                     ->url(fn (SalesInvoice $record) => route('print.invoice', $record))
                     ->openUrlInNewTab(),
             ])
+            ->defaultSort('created_at', 'desc')
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),

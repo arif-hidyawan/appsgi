@@ -23,7 +23,7 @@ class JournalResource extends Resource
     protected static ?int $navigationSort = 16;
 
     /**
-     * TOTALITAS: Filter query agar user hanya melihat jurnal dari perusahaan 
+     * Memfilter query agar user hanya melihat jurnal dari perusahaan 
      * yang terdaftar di tabel pivot company_user mereka.
      */
     public static function getEloquentQuery(): Builder
@@ -42,6 +42,7 @@ class JournalResource extends Resource
                 Forms\Components\Section::make('Header Jurnal')
                     ->columns(3)
                     ->schema([
+                        // -- BARIS 0: PERUSAHAAN --
                         Forms\Components\Select::make('company_id')
                             ->label('Perusahaan')
                             ->relationship('company', 'name', fn (Builder $query) => 
@@ -53,6 +54,7 @@ class JournalResource extends Resource
                             ->live() 
                             ->columnSpan(3),
 
+                        // -- BARIS 1: WAKTU & REFERENSI --
                         Forms\Components\DatePicker::make('journal_date')
                             ->label('Tanggal')
                             ->required()
@@ -62,20 +64,80 @@ class JournalResource extends Resource
                             ->label('Nomor Referensi')
                             ->placeholder('Contoh: INV-001')
                             ->maxLength(128),
+
+                        Forms\Components\TextInput::make('bkk_number')
+                            ->label('Nomor Bukti (BKM/BKK/TRF)')
+                            ->placeholder('Kosongkan untuk nomor otomatis')
+                            ->helperText('Kosongkan kolom ini jika ingin menggunakan format otomatis dari menu Pengaturan.')
+                            ->maxLength(100),
+
+                        // -- BARIS 2: KATEGORISASI JURNAL --
+                        Forms\Components\Select::make('source')
+                            ->label('Jenis Transaksi')
+                            ->options([
+                                'Jurnal Umum' => 'Jurnal Umum',
+                                'Kas Masuk' => 'Kas Masuk',
+                                'Kas Keluar' => 'Kas Keluar',
+                                'Transfer Kas' => 'Transfer Kas',
+                            ])
+                            ->default('Jurnal Umum')
+                            ->required(),
+
+                        Forms\Components\Select::make('is_real')
+                            ->label('Tipe Jurnal')
+                            ->options([
+                                1 => 'Real (Nyata)',
+                                0 => 'Semu (Internal)',
+                            ])
+                            ->default(1)
+                            ->required(),
+
+                        Forms\Components\Select::make('expense_category')
+                            ->label('Kategori Biaya')
+                            ->options([
+                                'F1' => 'F1',
+                                'F2' => 'F2',
+                                'F3' => 'F3',
+                                'F5' => 'F5',
+                                'TF1' => 'TF1',
+                            ])
+                            ->searchable()
+                            ->preload()
+                            ->placeholder('Pilih Kategori (Opsional)'),
+
+                        // -- BARIS 3: PIHAK TERKAIT --
+                        Forms\Components\Select::make('pic_id')
+                            ->label('PIC Request')
+                            ->relationship('pic', 'name')
+                            ->searchable()
+                            ->preload(),
+
+                        Forms\Components\Select::make('sales_name')
+                            ->label('Nama Sales')
+                            ->options(function () {
+                                return \App\Models\User::role('Sales')->pluck('name', 'name');
+                            })
+                            ->searchable()
+                            ->preload()
+                            ->placeholder('Pilih Sales (Opsional)'),
+
+                        Forms\Components\TextInput::make('contact_name')
+                            ->label('Kontak (Pengirim/Penerima)')
+                            ->placeholder('Contoh: Imam Ashari')
+                            ->maxLength(150),
                             
-                        Forms\Components\TextInput::make('source')
-                            ->label('Sumber')
-                            ->default('MANUAL')
-                            ->readOnly(),
-                            
+                        // -- BARIS 4: KETERANGAN --
                         Forms\Components\Textarea::make('memo')
                             ->label('Keterangan')
-                            ->columnSpanFull(),
+                            ->required()
+                            ->columnSpan(3),
                     ]),
 
                 // --- LINES (DETAIL) ---
+                // PERBAIKAN: Menggunakan visible() agar hanya tampil di page Create.
+                // Menggunakan hidden() saat Edit/Update bisa mengganggu proses penyimpanan relationship.
                 Forms\Components\Section::make('Detail Transaksi')
-                    ->hidden(fn (?Journal $record) => $record !== null)
+                    ->visible(fn ($livewire) => $livewire instanceof Pages\CreateJournal)
                     ->schema([
                         Forms\Components\Repeater::make('lines')
                             ->relationship()
@@ -89,12 +151,23 @@ class JournalResource extends Resource
                                             return []; 
                                         }
 
-                                        return \App\Models\Account::query()
+                                        $accounts = \App\Models\Account::query()
                                             ->where('type', 'D')
                                             ->where('company_id', $companyId)
-                                            ->pluck('name', 'id');
+                                            ->with('parent')
+                                            ->orderBy('code')
+                                            ->get();
+
+                                        $options = [];
+                                        foreach ($accounts as $account) {
+                                            $groupName = $account->parent ? "{$account->parent->code} - {$account->parent->name}" : 'Tanpa Induk';
+                                            $options[$groupName][$account->id] = "{$account->code} - {$account->name}";
+                                        }
+                                        
+                                        return $options;
                                     })
                                     ->searchable()
+                                    ->preload()
                                     ->required()
                                     ->columnSpan(4),
 
@@ -163,13 +236,12 @@ class JournalResource extends Resource
     {
         return $table
             ->columns([
-                // TOTALITAS: Tampilkan ID Journal
                 Tables\Columns\TextColumn::make('id')
                     ->label('ID')
                     ->sortable()
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
-                // TOTALITAS: Tampilkan Perusahaan secara permanen
                 Tables\Columns\TextColumn::make('company.name')
                     ->label('Perusahaan')
                     ->sortable()
@@ -181,12 +253,60 @@ class JournalResource extends Resource
                     ->date('d M Y')
                     ->sortable()
                     ->label('Tanggal'),
+
+                Tables\Columns\IconColumn::make('is_real')
+                    ->label('Tipe')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-eye-slash')
+                    ->trueColor('success')
+                    ->falseColor('warning')
+                    ->tooltip(fn ($state) => $state ? 'Jurnal Real' : 'Jurnal Semu')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('source')
+                    ->label('Jenis Transaksi')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'Kas Masuk' => 'success',
+                        'Kas Keluar' => 'danger',
+                        'Transfer Kas' => 'warning',
+                        default => 'gray',
+                    })
+                    ->sortable()
+                    ->searchable(),
                     
                 Tables\Columns\TextColumn::make('reference')
                     ->searchable()
                     ->weight('bold')
                     ->label('No. Ref'),
-                    
+
+                Tables\Columns\TextColumn::make('bkk_number')
+                    ->searchable()
+                    ->label('No. Bukti')
+                    ->toggleable(), 
+
+                Tables\Columns\TextColumn::make('pic.name')
+                    ->searchable()
+                    ->label('PIC Request')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('sales_name')
+                    ->searchable()
+                    ->label('Sales')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('contact_name')
+                    ->searchable()
+                    ->label('Kontak')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('expense_category')
+                    ->label('Kategori Biaya')
+                    ->badge()
+                    ->searchable()
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('memo')
                     ->limit(50)
                     ->label('Keterangan'),
@@ -199,7 +319,6 @@ class JournalResource extends Resource
                         return $record->lines()->where('direction', 'debit')->sum('amount');
                     }),
             ])
-            // TOTALITAS: Urutkan dari yang TERBARU (ID Descending)
             ->defaultSort('id', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('company_id')
@@ -209,6 +328,31 @@ class JournalResource extends Resource
                     )
                     ->searchable()
                     ->preload(),
+
+                Tables\Filters\TernaryFilter::make('is_real')
+                    ->label('Tipe Jurnal')
+                    ->placeholder('Semua Tipe')
+                    ->trueLabel('Hanya Jurnal Real')
+                    ->falseLabel('Hanya Jurnal Semu'),
+
+                Tables\Filters\SelectFilter::make('source')
+                    ->label('Jenis Transaksi')
+                    ->options([
+                        'Jurnal Umum' => 'Jurnal Umum',
+                        'Kas Masuk' => 'Kas Masuk',
+                        'Kas Keluar' => 'Kas Keluar',
+                        'Transfer Kas' => 'Transfer Kas',
+                    ]),
+
+                Tables\Filters\SelectFilter::make('expense_category')
+                    ->label('Kategori Biaya')
+                    ->options([
+                        'F1' => 'F1',
+                        'F2' => 'F2',
+                        'F3' => 'F3',
+                        'F5' => 'F5',
+                        'TF1' => 'TF1',
+                    ]),
 
                 Tables\Filters\Filter::make('journal_date')
                     ->form([

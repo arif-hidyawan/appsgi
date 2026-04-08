@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "27b2a0f00556291a7639859b04b08dfc",
+    "content-hash": "054ddb52d73197a4464b9c7df8fe0897",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -1863,31 +1863,6 @@
                 "source": "https://github.com/filamentphp/filament"
             },
             "time": "2025-06-12T15:11:14+00:00"
-        },
-        {
-            "name": "filapanel/classic-theme",
-            "version": "1.0.3",
-            "dist": {
-                "type": "zip",
-                "url": "https://classic-theme.filapanel.com/dist/MS4wLjMuMA==.zip"
-            },
-            "type": "library",
-            "autoload": {
-                "psr-4": {
-                    "Filapanel\\ClassicTheme\\": "src/"
-                }
-            },
-            "authors": [
-                {
-                    "name": "Dennis",
-                    "email": "dennissmink@gmail.com"
-                }
-            ],
-            "support": {
-                "issues": "https://github.com/Filapanel/classic-theme/issues",
-                "source": "https://github.com/Filapanel/classic-theme/tree/1.0.3"
-            },
-            "time": "2024-07-21T07:53:09+00:00"
         },
         {
             "name": "fruitcake/php-cors",
